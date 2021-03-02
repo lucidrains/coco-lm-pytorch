@@ -1,3 +1,5 @@
+<img src="./coco.png" width="500px"></img>
+
 ## COCO LM Pretraining (wip)
 
 Implementation of <a href="https://arxiv.org/abs/2102.08473">COCO-LM</a>, Correcting and Contrasting Text Sequences for Language Model Pretraining, in Pytorch. They were able to make contrastive learning work in a self-supervised manner for language model pretraining. Seems like a solid successor to Electra.
