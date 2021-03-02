@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'coco-lm-pytorch',
   packages = find_packages(),
-  version = '0.1.1',
+  version = '0.0.1',
   license='MIT',
   description = 'COCO - Pytorch',
   author = 'Phil Wang',

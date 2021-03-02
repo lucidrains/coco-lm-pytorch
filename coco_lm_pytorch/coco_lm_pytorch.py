@@ -2,7 +2,7 @@ import math
 from functools import reduce
 
 import torch
-from torch import nn
+from torch import nn, einsum
 import torch.nn.functional as F
 
 # helpers
@@ -91,28 +91,27 @@ class COCO(nn.Module):
         generator,
         discriminator,
         *,
+        discr_dim,
         num_tokens = None,
-        discr_dim = -1,
         discr_layer = -1,
         mask_prob = 0.15,
         replace_prob = 0.85,
         random_token_prob = 0.,
-        mask_token_id = 2,
         pad_token_id = 0,
+        cls_token_id = 1,
+        mask_token_id = 2,
         mask_ignore_token_ids = [],
         disc_weight = 50.,
         gen_weight = 1.,
+        cl_weight = 1.,
         temperature = 1.):
         super().__init__()
 
         self.generator = generator
         self.discriminator = discriminator
 
-        if discr_dim > 0:
-            self.discriminator = nn.Sequential(
-                HiddenLayerExtractor(discriminator, layer = discr_layer),
-                nn.Linear(discr_dim, 1)
-            )
+        self.discriminator = HiddenLayerExtractor(discriminator, layer = discr_layer)
+        self.to_correction_logits = nn.Linear(discr_dim, 1)
 
         # mlm related probabilities
         self.mask_prob = mask_prob
@@ -122,9 +121,10 @@ class COCO(nn.Module):
         self.random_token_prob = random_token_prob
 
         # token ids
+        self.cls_token_id = cls_token_id
         self.pad_token_id = pad_token_id
         self.mask_token_id = mask_token_id
-        self.mask_ignore_token_ids = set([*mask_ignore_token_ids, pad_token_id])
+        self.mask_ignore_token_ids = set([*mask_ignore_token_ids, pad_token_id, cls_token_id])
 
         # sampling temperature
         self.temperature = temperature
@@ -132,10 +132,18 @@ class COCO(nn.Module):
         # loss weights
         self.disc_weight = disc_weight
         self.gen_weight = gen_weight
+        self.cl_weight = cl_weight
 
+        self.cl_temperature = nn.Parameter(torch.tensor(1.))
 
     def forward(self, input, **kwargs):
-        b, t = input.shape
+        b, t, device = *input.shape, input.device
+        assert b > 1, 'batch size need to be bigger than 1 for contrastive learning'
+
+        cls_tokens = torch.empty(b, 1, dtype = torch.long).fill_(self.cls_token_id)
+
+        input = torch.cat((cls_tokens, input), dim = 1)
+        input = input[:, :-1]
 
         replace_prob = prob_mask_like(input, self.replace_prob)
 
@@ -193,13 +201,28 @@ class COCO(nn.Module):
         non_padded_indices = torch.nonzero(input != self.pad_token_id, as_tuple=True)
 
         # get discriminator output and binary cross entropy loss
-        disc_logits = self.discriminator(disc_input, **kwargs)
-        disc_logits = disc_logits.reshape_as(disc_labels)
+        disc_embeddings_correction = self.discriminator(disc_input, **kwargs)
+
+        correction_logits = self.to_correction_logits(disc_embeddings_correction)
+        disc_logits = correction_logits.reshape_as(disc_labels)
 
         disc_loss = F.binary_cross_entropy_with_logits(
             disc_logits[non_padded_indices],
             disc_labels[non_padded_indices]
         )
 
-        weighted_loss = self.gen_weight * mlm_loss + self.disc_weight * disc_loss
+        # contrastive loss
+        disc_embeddings_cropped = self.discriminator(input, **kwargs)
+
+        cls_tokens_corrected = disc_embeddings_correction[:, 0]
+        cls_tokens_cropped = disc_embeddings_cropped[:, 0]
+
+        cl_temperature = self.cl_temperature.exp()
+        sim = einsum('i d, j d -> i j', cls_tokens_corrected, cls_tokens_cropped) * cl_temperature
+        labels = torch.arange(b, device = device)
+
+        cl_loss = (F.cross_entropy(sim, labels) + F.cross_entropy(sim.t(), labels)) * 0.5
+
+        # weight all losses
+        weighted_loss = self.cl_weight * cl_loss + self.gen_weight * mlm_loss + self.disc_weight * disc_loss
         return weighted_loss
