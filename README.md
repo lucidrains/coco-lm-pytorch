@@ -60,6 +60,7 @@ trainer = COCO(
     discriminator,
     discr_dim = 1024,            # the embedding dimension of the discriminator
     discr_layer = 'attn_layers', # the layer name in the discriminator, whose output would be used for predicting token is still the same or replaced
+    cls_token_id = 1,            # a token id must be reserved for [CLS], which is prepended to the sequence for contrastive learning
     mask_token_id = 2,           # the token id reserved for masking
     pad_token_id = 0,            # the token id for padding
     mask_prob = 0.15,            # masking probability for masked language modeling

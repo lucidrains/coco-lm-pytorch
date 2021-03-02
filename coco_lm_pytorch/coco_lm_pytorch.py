@@ -104,7 +104,9 @@ class COCO(nn.Module):
         disc_weight = 50.,
         gen_weight = 1.,
         cl_weight = 1.,
-        temperature = 1.):
+        temperature = 1.,
+        crop_percentage = 0.5
+    ):
         super().__init__()
 
         self.generator = generator
@@ -136,6 +138,8 @@ class COCO(nn.Module):
 
         self.cl_temperature = nn.Parameter(torch.tensor(1.))
 
+        self.crop_percentage = crop_percentage
+
     def forward(self, input, **kwargs):
         b, t, device = *input.shape, input.device
         assert b > 1, 'batch size need to be bigger than 1 for contrastive learning'
@@ -151,6 +155,13 @@ class COCO(nn.Module):
         # also do not include these special tokens in the tokens chosen at random
         no_mask = mask_with_tokens(input, self.mask_ignore_token_ids)
         mask = get_mask_subset_with_prob(~no_mask, self.mask_prob)
+
+        # get random cropped input for contrastive learning
+        random_crop = get_mask_subset_with_prob(~no_mask, self.crop_percentage)
+        crop_length = int(t * self.crop_percentage)
+        cropped_input = input.masked_select(random_crop).reshape(b, crop_length)
+        cropped_input = torch.cat((cls_tokens, cropped_input), dim = 1)
+        cropped_input = F.pad(cropped_input, (0, t - crop_length - 1), value = self.pad_token_id)
 
         # get mask indices
         mask_indices = torch.nonzero(mask, as_tuple=True)
@@ -212,7 +223,7 @@ class COCO(nn.Module):
         )
 
         # contrastive loss
-        disc_embeddings_cropped = self.discriminator(input, **kwargs)
+        disc_embeddings_cropped = self.discriminator(cropped_input, **kwargs)
 
         cls_tokens_corrected = disc_embeddings_correction[:, 0]
         cls_tokens_cropped = disc_embeddings_cropped[:, 0]
