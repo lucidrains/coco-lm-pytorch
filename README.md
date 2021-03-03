@@ -21,12 +21,11 @@ Then
 
 ```python
 import torch
-from torch import nn
-from x_transformers import TransformerWrapper, Encoder
-
 from coco_lm_pytorch import COCO
 
 # (1) instantiate the generator and discriminator, making sure that the generator is roughly a quarter to a half of the size of the discriminator
+
+from x_transformers import TransformerWrapper, Encoder
 
 generator = TransformerWrapper(
     num_tokens = 20000,
