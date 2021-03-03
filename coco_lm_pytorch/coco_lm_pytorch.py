@@ -10,6 +10,9 @@ import torch.nn.functional as F
 def log(t, eps=1e-9):
     return torch.log(t + eps)
 
+def norm(t):
+    return F.normalize(t, p = 2, dim = -1)
+
 def gumbel_noise(t):
     noise = torch.zeros_like(t).uniform_(0, 1)
     return -log(-log(noise))
@@ -225,10 +228,11 @@ class COCO(nn.Module):
         # contrastive loss
         disc_embeddings_cropped = self.discriminator(cropped_input, **kwargs)
 
-        cls_tokens_corrected = disc_embeddings_correction[:, 0]
-        cls_tokens_cropped = disc_embeddings_cropped[:, 0]
+        cls_tokens_corrected, cls_tokens_cropped = disc_embeddings_correction[:, 0], disc_embeddings_cropped[:, 0]
+        cls_tokens_corrected, cls_tokens_cropped = map(norm, (cls_tokens_corrected, cls_tokens_cropped))
 
         cl_temperature = self.cl_temperature.exp()
+
         sim = einsum('i d, j d -> i j', cls_tokens_corrected, cls_tokens_cropped) * cl_temperature
         labels = torch.arange(b, device = device)
 
