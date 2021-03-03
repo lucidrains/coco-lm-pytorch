@@ -4,6 +4,12 @@
 
 Implementation of <a href="https://arxiv.org/abs/2102.08473">COCO-LM</a>, Correcting and Contrasting Text Sequences for Language Model Pretraining, in Pytorch. They were able to make contrastive learning work in a self-supervised manner for language model pretraining. Seems like a solid successor to Electra.
 
+## Install
+
+```bash
+$ pip install coco-lm-pytorch
+```
+
 ## Usage
 
 An example using the `x-transformers` library
@@ -53,18 +59,21 @@ generator.pos_emb = discriminator.pos_emb
 
 # weight tie any other embeddings if available, token type embeddings, etc.
 
-# (3) instantiate electra
+# (3) instantiate COCO
 
 trainer = COCO(
     generator,
     discriminator,
     discr_dim = 1024,            # the embedding dimension of the discriminator
-    discr_layer = 'attn_layers', # the layer name in the discriminator, whose output would be used for predicting token is still the same or replaced
+    discr_layer = 'norm',        # the layer name in the discriminator, whose output would be used for predicting token is still the same or replaced
     cls_token_id = 1,            # a token id must be reserved for [CLS], which is prepended to the sequence for contrastive learning
     mask_token_id = 2,           # the token id reserved for masking
     pad_token_id = 0,            # the token id for padding
     mask_prob = 0.15,            # masking probability for masked language modeling
-    mask_ignore_token_ids = []   # ids of tokens to ignore for mask modeling ex. (cls, sep)
+    mask_ignore_token_ids = [],  # ids of tokens to ignore for mask modeling ex. (cls, sep)
+    cl_weight = 1.,              # weight for the contrastive learning loss
+    disc_weight = 1.,            # weight for the corrective learning loss
+    gen_weight = 1.              # weight for the MLM loss
 )
 
 # (4) train
